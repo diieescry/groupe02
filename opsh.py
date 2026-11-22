@@ -5,7 +5,16 @@ import signal
 import readline
 from contextlib import redirect_stdout
 from parser import parse_command
+from redirections import redirect_output
+import importlib.util
 
+spec = importlib.util.spec_from_file_location(
+    "opsh_builtins",
+    os.path.join(os.path.dirname(__file__), "builtins.py")
+)
+
+opsh_builtins = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(opsh_builtins)
 # Historique
 history = []
 # Auto-completion
@@ -59,6 +68,21 @@ quit     : Quitter OPSH
 def builtin(args):
 
     command = args[0]
+
+        # Commandes développées dans builtins.py
+    commands = {
+        "list": opsh_builtins.cmd_list,
+        "show": opsh_builtins.cmd_show,
+        "copy": opsh_builtins.cmd_copy,
+        "move": opsh_builtins.cmd_move,
+        "del": opsh_builtins.cmd_del,
+        "newdir": opsh_builtins.cmd_newdir,
+        "newfile": opsh_builtins.cmd_newfile
+    }
+
+    if command in commands:
+        commands[command](args[1:])
+        return True
 
     if command == "quit":
         print("Fermeture de OPSH...")
@@ -173,7 +197,7 @@ def execute(args, input_file=None,
                 os.close(fd)
 
             # Redirection de sortie > ou >>
-            if output_file:
+            
 
                 flags = os.O_WRONLY | os.O_CREAT
 
@@ -181,8 +205,8 @@ def execute(args, input_file=None,
                     flags |= os.O_APPEND
                 else:
                     flags |= os.O_TRUNC
-
-                fd = os.open(output_file, flags, 0o666)
+                if output_file:
+                 fd = os.open(output_file, flags, 0o666)
 
                 os.dup2(fd, 1)
                 os.close(fd)
@@ -323,10 +347,13 @@ def main():
                 print("Erreur :", error)
                 continue
 
-            # Commandes internes
+            
+                        # Commandes internes
             if args[0] in (
                 "quit", "go", "path", "say",
-                "info", "past", "osinfo"
+                "info", "past", "osinfo",
+                "list", "show", "copy", "move",
+                "del", "newdir", "newfile"
             ):
 
                 if input_file:
@@ -334,10 +361,12 @@ def main():
                     continue
 
                 if output_file:
+                    file = redirect_output(output_file, append)
 
-                    mode = "a" if append else "w"
+                    if file is None:
+                        continue
 
-                    with open(output_file, mode) as file:
+                    with file:
                         with redirect_stdout(file):
                             result = builtin(args)
 
@@ -349,13 +378,8 @@ def main():
 
                 continue
 
-            # Commandes externes
-            # Gestion du background &
-            background = False
-
-            if args and args[-1] == "&":
-                args = args[:-1]
-                background = True
+              
+             
 
             # Commandes externes
             execute(
